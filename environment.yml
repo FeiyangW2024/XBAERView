@@ -1,0 +1,11 @@
+name: py312
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - gdal>=3.10
+  - netcdf4
+  - numpy
+  - scipy
+  - fonttools
+  - brotli

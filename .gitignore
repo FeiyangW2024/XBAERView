@@ -1,0 +1,9 @@
+node_modules/
+dist/
+deploy/
+config/deployment.linux.json
+*.tsbuildinfo
+__pycache__/
+.DS_Store
+work/
+.env

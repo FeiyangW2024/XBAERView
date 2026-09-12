@@ -1,0 +1,15 @@
+{
+  "platformRoot": "/home/admin1/xbaer-view",
+  "members": {
+    "member_a": {
+      "resultsRoot": "/data_hdd/REPLACE_WITH_ACTUAL_MEMBER_DIRECTORY/results",
+      "publishRoot": "/data_ssd/REPLACE_WITH_ACTUAL_MEMBER_DIRECTORY/publish",
+      "publishUrl": "/data/members/member_a/"
+    }
+  },
+  "basemap": {
+    "sourceRoot": "/data_hdd/xbaer-view/basemap-source",
+    "publishRoot": "/data_ssd/xbaer-view/publish/basemap",
+    "url": "/data/basemap/"
+  }
+}

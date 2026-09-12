@@ -1,0 +1,15 @@
+{
+  "platformRoot": "..",
+  "members": {
+    "local": {
+      "resultsRoot": "../../test data",
+      "publishRoot": "../../test data/publish",
+      "publishUrl": "/data/"
+    }
+  },
+  "basemap": {
+    "sourceRoot": "../../test data/basemap",
+    "publishRoot": "../../test data/publish/basemap",
+    "url": "/data/basemap/"
+  }
+}

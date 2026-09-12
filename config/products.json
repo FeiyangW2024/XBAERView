@@ -1,0 +1,61 @@
+{
+  "products": [
+    {
+      "id": "gems_no2_scd",
+      "product": "no2",
+      "input": "no2 scd/*.nc",
+      "variable": "no2_scd",
+      "lat": "lat",
+      "lon": "lon",
+      "name": {
+        "zh": "NO₂ 斜柱浓度",
+        "en": "NO₂ slant column"
+      },
+      "type": "continuous",
+      "unit": "molecules/cm²",
+      "min": 0,
+      "max": 80000000000000000,
+      "resolution": 0.05,
+      "source": "GEMS · NO₂ SCD",
+      "owner": "local",
+      "badge": "NO₂",
+      "sourceLabel": "GEMS"
+    },
+    {
+      "id": "gems_aerosol_type",
+      "product": "aerosol",
+      "input": "aerosol type/*.nc",
+      "variable": "Data Fields/AerosolType",
+      "lat": "Geolocation Fields/Latitude",
+      "lon": "Geolocation Fields/Longitude",
+      "name": {
+        "zh": "气溶胶类型",
+        "en": "Aerosol type"
+      },
+      "type": "categorical",
+      "unit": "",
+      "resolution": 0.05,
+      "source": "GEMS · AERAOD v2.1.0",
+      "owner": "local",
+      "classes": {
+        "1": {
+          "zh": "强吸收细粒子",
+          "en": "High absorbing fine",
+          "color": "#b65b50"
+        },
+        "2": {
+          "zh": "沙尘",
+          "en": "Dust",
+          "color": "#e6b659"
+        },
+        "3": {
+          "zh": "非吸收型",
+          "en": "Non-absorbing",
+          "color": "#51acb6"
+        }
+      },
+      "badge": "Ae",
+      "sourceLabel": "GEMS"
+    }
+  ]
+}

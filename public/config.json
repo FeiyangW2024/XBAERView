@@ -1,0 +1,10 @@
+{
+  "members": {
+    "local": {
+      "catalogUrl": "/data/catalog.json"
+    }
+  },
+  "basemapRoot": "/data/basemap/",
+  "rasterCacheSize": 4,
+  "rgbBasemapUrl": null
+}

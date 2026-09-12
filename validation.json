@@ -1,0 +1,79 @@
+[
+  {
+    "file": "no2_20230106T034500Z_12be263243f6.tif",
+    "size": [
+      1683,
+      1152
+    ],
+    "validPixels": 1227851,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "no2_20230106T044500Z_3f228e30a255.tif",
+    "size": [
+      1686,
+      1154
+    ],
+    "validPixels": 1253115,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "no2_20230107T044500Z_82946e1a7708.tif",
+    "size": [
+      1685,
+      1154
+    ],
+    "validPixels": 1253080,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "no2_20230113T034500Z_5f53ef8099aa.tif",
+    "size": [
+      1684,
+      1153
+    ],
+    "validPixels": 1231813,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "no2_20230130T054500Z_80fa8009bf00.tif",
+    "size": [
+      1682,
+      1149
+    ],
+    "validPixels": 1253700,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "aerosol_20230412T034500Z_da2024d43fba.tif",
+    "size": [
+      1683,
+      1151
+    ],
+    "validPixels": 321208,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  },
+  {
+    "file": "aerosol_20230413T034500Z_3b318dbf60bb.tif",
+    "size": [
+      1683,
+      1151
+    ],
+    "validPixels": 293661,
+    "overviews": 2,
+    "sourceNeighborhoodAgreement": 1.0,
+    "httpRange": 206
+  }
+]
