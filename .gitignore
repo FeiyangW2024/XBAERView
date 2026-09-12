@@ -1,5 +1,5 @@
 node_modules/
-dist/
+/dist
 deploy/
 config/deployment.linux.json
 *.tsbuildinfo
@@ -7,3 +7,5 @@ __pycache__/
 .DS_Store
 work/
 .env
+.production/
+.production-link

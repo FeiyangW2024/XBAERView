@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onBeforeUnmount } from "vue";
 import { useView } from "../stores/view";
+import { useCompare } from "../stores/compare";
+const c = useCompare();
 const s = useView();
+const indexFor = (id: string) => id.startsWith("compare:") ? c.indices[Number(id.slice(-1))] : s.indices[id];
 const t = (zh: string, en: string) => (s.locale === "zh" ? zh : en);
 function value(id: string, n: number | null) {
   if (n === null) return t("无有效数据", "No valid data");
-  const index = s.indices[id];
+  const index = indexFor(id);
   if (index?.type === "categorical")
     return index.classes?.[String(n)]?.[s.locale] || String(n);
   return Math.abs(n) >= 1e5 ? n.toExponential(4) : n.toPrecision(5);
@@ -39,13 +42,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', place));
       {{ t("请先显示一个数据图层", "Display a data layer first") }}
     </p>
     <div v-for="r in s.query.results" :key="r.id" class="pixel-result">
-      <span>{{ s.indices[r.id]?.name[s.locale] }}</span
+      <span>{{ r.id.startsWith("compare:") ? (r.id.endsWith("0") ? t("左 · ", "Left · ") : t("右 · ", "Right · ")) : "" }}{{ indexFor(r.id)?.name[s.locale] }}</span
       ><strong>{{
         r.error
           ? t("查询失败，请重试", "Query failed; retry")
           : value(r.id, r.value)
       }}</strong
-      ><small v-if="r.value !== null">{{ s.indices[r.id]?.unit }}</small>
+      ><small v-if="r.value !== null">{{ indexFor(r.id)?.unit }}</small>
     </div>
     <footer>
       {{

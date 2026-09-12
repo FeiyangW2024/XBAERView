@@ -21,6 +21,8 @@ export const useView = defineStore("view", () => {
     indices = ref<Record<string, ProductIndex>>({}),
     settings = ref<Record<string, LayerSettings>>({}),
     status = ref<Record<string, string>>({});
+  const coordinateDecimal = ref(false);
+  const mouseCoordinate = ref<number[] | null>(null);
   const currentTime = ref(""),
     currentDate = ref(""),
     error = ref(""),
@@ -71,8 +73,8 @@ export const useView = defineStore("view", () => {
       indices.value[id] = index;
       settings.value[id] ??= {
         opacity: 0.8,
-        min: index.min ?? 0,
-        max: index.max ?? 3,
+        min: index.files.at(-1)?.statistics?.min ?? 0,
+        max: index.files.at(-1)?.statistics?.p95 ?? 1,
         palette: "thermal",
       };
       status.value[id] = "select";
@@ -110,6 +112,8 @@ export const useView = defineStore("view", () => {
     }
   }
   return {
+    coordinateDecimal,
+    mouseCoordinate,
     locale,
     theme,
     layers,

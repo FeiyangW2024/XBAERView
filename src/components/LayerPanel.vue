@@ -2,7 +2,11 @@
 import { computed } from "vue";
 import { useView } from "../stores/view";
 import { layerBadge, layerSourceLabel } from "../services/layerLabels";
-import { palettes } from "../gis/colors";
+import { paletteColors } from "../gis/colors";
+import PaletteControl from "./PaletteControl.vue";
+import ClassColor from "./ClassColor.vue";
+import { useCompare } from "../stores/compare";
+const c = useCompare();
 const s = useView();
 const t = (zh: string, en: string) => (s.locale === "zh" ? zh : en);
 defineEmits<{ fit: [bounds?: number[]] }>();
@@ -27,7 +31,7 @@ function range(id: string, key: "min" | "max", event: Event) {
   const val = Number((event.target as HTMLInputElement).value),
     v = s.settings[id]!;
   if (Number.isFinite(val) && (key === "min" ? val < v.max : val > v.min))
-    v[key] = val;
+    { v[key] = val; v.manualRange = true; }
   else (event.target as HTMLInputElement).value = String(v[key]);
 }
 </script>
@@ -51,7 +55,7 @@ function range(id: string, key: "min" | "max", event: Event) {
       </div>
       <span class="count">{{ s.enabled.length }} / {{ s.layers.length }}</span>
     </div>
-    <div class="panel-scroll">
+    <div class="panel-scroll" :inert="c.active">
       <p class="panel-hint">
         {{
           t(
@@ -121,28 +125,22 @@ function range(id: string, key: "min" | "max", event: Event) {
                 <label :for="'palette-' + layer.id">{{
                   t("色标", "Color scale")
                 }}</label
-                ><select
-                  :id="'palette-' + layer.id"
-                  v-model="s.settings[layer.id]!.palette"
-                >
-                  <option value="viridis">Viridis</option>
-                  <option value="thermal">Thermal</option>
-                  <option value="custom">{{ t("自定义", "Custom") }}</option>
-                </select>
+                ><PaletteControl :settings="s.settings[layer.id]!" />
               </div>
               <div
                 class="gradient"
                 :style="{
-                  background: `linear-gradient(90deg,${palettes[s.settings[layer.id]!.palette].join(',')})`,
+                  background: `linear-gradient(90deg,${paletteColors(s.settings[layer.id]!).join(',')})`,
                 }"
               ></div>
               <div class="range-labels">
                 <span>{{ fmt(s.settings[layer.id]!.min) }}</span
                 ><span>{{ fmt(s.settings[layer.id]!.max) }}</span>
               </div>
-              <span class="unit">{{ layer.unit }}</span>
+              <span class="unit">{{ layer.unit }} · {{ s.settings[layer.id]!.manualRange ? t('手动范围','Manual range') : !s.currentTime ? t('选时后计算范围','Select a time for range') : s.settings[layer.id]!.rangeStatus === 'loading' ? t('计算 P95…','Computing P95…') : s.settings[layer.id]!.rangeStatus === 'error' ? t('P95 计算失败','P95 unavailable') : t('最小值～P95','Min–P95') }}</span>
               <details>
                 <summary>{{ t("调整范围", "Adjust range") }}</summary>
+                <button v-if="s.settings[layer.id]!.manualRange" @click="s.settings[layer.id]!.manualRange = false">{{ t('恢复 Min～P95','Reset Min–P95') }}</button>
                 <div class="range-inputs">
                   <label
                     >Min<input
@@ -162,8 +160,8 @@ function range(id: string, key: "min" | "max", event: Event) {
                 v-for="(item, key) in s.indices[layer.id]!.classes"
                 :key="key"
               >
-                <i :style="{ background: item.color }"></i
-                ><span>{{ item[s.locale] }}</span
+                <ClassColor :label="item[s.locale]" :color="s.settings[layer.id]!.classColors?.[String(key)] ?? item.color" @change="(color) => { (s.settings[layer.id]!.classColors ??= {})[String(key)] = color; }" />
+                <span>{{ item[s.locale] }}</span
                 ><small>{{ key }}</small>
               </li>
             </ul>
@@ -195,16 +193,8 @@ function range(id: string, key: "min" | "max", event: Event) {
           </template></template
         >
       </article>
-      <div class="panel-note">
-        <span class="orbit-small">◎</span>
-        <p>
-          {{ t("保留科学数值", "Scientific values preserved")
-          }}<small>{{
-            t("按观测时刻加载 · UTC", "Loaded by observation · UTC")
-          }}</small>
-        </p>
-      </div>
+
     </div>
-    <div class="panel-footer">XBAER <span>EARTH OBSERVATION</span></div>
+    <div class="panel-footer"><span>{{ t("地球观测", "EARTH OBSERVATION") }}</span><button :disabled="!s.layers.length" :aria-pressed="c.active" @click="c.active ? c.stop() : c.start()">{{ c.active ? t("退出对比", "Exit compare") : t("对比", "Compare") }}</button></div>
   </aside>
 </template>

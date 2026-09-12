@@ -17,6 +17,7 @@ export type RasterFile = {
   bounds: number[];
   resolution: number[];
   nodata: number;
+  statistics?: { min: number; p95: number };
   projection?: { code: string; definition: string };
 };
 export type ProductIndex = Omit<LayerInfo, "index"> & {
@@ -35,6 +36,10 @@ export type LayerSettings = {
   opacity: number;
   min: number;
   max: number;
-  palette: "viridis" | "thermal" | "custom";
+  palette: string;
+  reversed?: boolean;
+  classColors?: Record<string,string>;
+  manualRange?: boolean;
+  rangeStatus?: "loading" | "ready" | "error";
 };
 export type QueryResult = { id: string; value: number | null; error?: string };

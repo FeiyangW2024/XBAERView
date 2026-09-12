@@ -1,3 +1,4 @@
+import { attachSwipe } from "./swipe";
 import Map from "ol/Map";
 import GeoTIFF from "ol/source/GeoTIFF";
 import WebGLTileLayer from "ol/layer/WebGLTile";
@@ -17,6 +18,7 @@ type Entry = {
 export class RasterManager {
   private entries = new globalThis.Map<string, Entry>();
   private generation = 0;
+  fraction = .5;
   private queryController?: AbortController;
   private reader: PixelReader;
   constructor(
@@ -65,11 +67,13 @@ export class RasterManager {
     });
     const layer = new WebGLTileLayer({
       source,
+      className: id.startsWith("compare:") ? id.replace(":", "-") : "ol-layer",
       style: rasterStyle(index, settings),
       opacity: settings.opacity,
       zIndex: z,
       cacheSize: 64,
     });
+    if (id.startsWith("compare:")) attachSwipe(layer, Number(id.slice(-1)), () => this.fraction);
     const entry = {
       url,
       layer,
