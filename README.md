@@ -221,3 +221,76 @@ colors:
 上传色标只保存在当前浏览器的 localStorage，不上传服务器。选择上传色标后，下拉框出现「删除当前上传色标」；删除时使用它的图层回到 Thermal，内置色标保留。反转同步应用于地图和图例。
 
 比例尺下方显示最后一次地图鼠标位置，无需启用科研图层。默认度分秒（E/W、N/S），点击坐标切换为十进制度；时间面板收起/展开保留本次选择。色标下拉文本右对齐，`r` 背景常驻。删除菜单始终可见：上传色标可删除，Viridis/自定义内置色标可隐藏并从菜单恢复，Thermal 为不可删除的默认回退项。
+
+## Mac 一键推送到现有生产服务器
+
+日常入口为 **`./deploy.sh`**。不能使用同名 `./deploy` 文件：项目已保留服务器专属 `deploy/` 目录（存放 deploy/config.json），文件与目录无法同名。原有隔离构建、release 切换和回滚脚本保持不变。
+
+```bash
+cd "/Users/fy/Documents/Website project vs/XBAERView"
+# 首次本机准备依赖；以后 package-lock 更新时按需执行
+npm ci
+# 检查修改并提交需要发布的文件，工作树必须干净
+# git add <明确的文件列表>
+# git commit -m "Update XBAER View"
+./deploy.sh --check   # 仅本机检查与测试，不连接服务器
+./deploy.sh           # 测试 → bundle → scp → SSH → 构建部署 → HTTP 校验
+```
+
+默认目标 `admin1@10.103.2.100`，项目 `/home/admin1/xbaer-view`。首次 SSH 可能要求核对主机指纹或输入密码；日常免密可使用已有 SSH key/agent，本脚本不修改 SSH 配置、不存储密码。临时传输文件名为 `update`，内容是 Git bundle；服务器项目名称始终不变。临时目录使用随机名称并在结束时清理。
+
+远程接收脚本在专用 Bash 进程内执行：
+
+```bash
+source /home/admin1/miniforge3/etc/profile.d/conda.sh
+conda activate xbaer-web
+```
+
+使用现有 xbaer-web 的 Node/npm（服务器目前 Node v24.19.0、npm 11.17.0），不通过 apt 安装 Node，不修改 `.bashrc`、`.profile`、`.zshrc`、Conda 初始化或共享账号的任何登录设置。该环境只传给部署进程及其子进程，SSH 命令结束即结束，不影响其他会话。无需执行 conda init 或配置自动激活。
+
+可通过一次命令的环境变量覆盖目标，不修改源码，例如：
+
+```bash
+XBAER_SSH_TARGET=admin1@10.103.2.100 \
+XBAER_REMOTE_ROOT=/home/admin1/xbaer-view \
+XBAER_CONDA_SH=/home/admin1/miniforge3/etc/profile.d/conda.sh \
+XBAER_CONDA_ENV=xbaer-web \
+XBAER_HEALTH_URL=http://127.0.0.1:8080 \
+XBAER_PUBLIC_URL=http://10.103.2.100:8080/ \
+./deploy.sh
+```
+
+脚本验证本机工作树、受保护路径、npm test、vue-tsc；远程验证工作树、已接管的生产状态、bundle 与完整 SHA；为原 HEAD 创建本地备份 ref，然后 detached checkout。依次调用现有 deploy-production.sh --check 和 deploy-production.sh，最后验证 current SHA、previous、dist/index.html、服务器配置一致性，以及 8080 首页与 config.json 的 HTTP 200 和响应内容一致性。成功输出请求/current/previous commit 和访问地址。
+
+失败立即停止并返回非零；本地检查失败不会上传。构建与切换阶段的恢复仍由现有 production.mjs 负责；外层脚本不会 reset --hard，也不会自动改写配置、发布科研数据或再次 adopt。切换源码后构建失败，源码可能停留在新 commit 而旧 dist 仍服务；HTTP 验证发生在现有部署事务之后，因此 HTTP 失败可能已经切换到新 release，不能把失败输出理解为已自动回滚。检查 state.json，再决定是否回滚。不要并行运行手工部署与一键推送；一键推送之间使用 .production/push-lock 互斥，原部署仍使用自己的 lock/journal。进程被杀后，确认没有发布进程再移除遗留 push-lock。
+
+### 首次服务器接管与回滚
+
+现服务器已经完成首次 `--adopt-current`，以后只运行 `./deploy.sh`。若未来迁移到全新服务器，先准备服务器配置、正确的 Nginx 根目录与可读取的目录权限、xbaer-web 环境，并人工确认已有 dist 对应 commit；首次接管在独立子进程中执行（不更改登录环境）：
+
+```bash
+ssh admin1@10.103.2.100 'bash --noprofile --norc -s' <<'REMOTE'
+set -euo pipefail
+source /home/admin1/miniforge3/etc/profile.d/conda.sh
+conda activate xbaer-web
+cd /home/admin1/xbaer-view
+bash scripts/deploy-production.sh --adopt-current 已确认旧DIST对应的完整COMMIT
+REMOTE
+```
+
+仅首次接管时将占位文字替换为真实 commit。常规回滚复用已有脚本，同样只临时启用环境：
+
+```bash
+ssh admin1@10.103.2.100 'bash --noprofile --norc -s' <<'REMOTE'
+set -euo pipefail
+source /home/admin1/miniforge3/etc/profile.d/conda.sh
+conda activate xbaer-web
+cd /home/admin1/xbaer-view
+bash .production/rollback-production.sh --check
+bash .production/rollback-production.sh
+curl --fail --show-error --silent -o /dev/null http://127.0.0.1:8080/
+curl --fail --show-error --silent -o /dev/null http://127.0.0.1:8080/config.json
+REMOTE
+```
+
+`.production/rollback-production.sh` 是已有管理脚本保留副本，适用于源码已回退到尚无 scripts 工具的旧版本。回滚不修改远程历史，保留当前服务器 deploy/config.json。新入口的本地测试使用临时 Git 仓库、模拟 Conda/npm/curl，不连接真实服务器：`node --test tests/test_push_production.mjs`。
