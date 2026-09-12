@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { useView } from "../stores/view";
+import { useCompare } from "../stores/compare";
+import CoordinateReadout from "./CoordinateReadout.vue";
+import CompareControls from "./CompareControls.vue";
+const c = useCompare();
 const s = useView();
 const t = (zh: string, en: string) => (s.locale === "zh" ? zh : en);
 function step(n: number) {
@@ -10,15 +14,19 @@ function step(n: number) {
 </script>
 <template>
   <div v-show="!s.timePanelOpen" class="collapsed-time-scale" id="time-scale-collapsed"></div>
+  <CoordinateReadout v-if="!s.timePanelOpen" class="coordinates-collapsed" />
   <button v-if="!s.timePanelOpen" class="time-reopen glass" @click="s.timePanelOpen = true" :aria-expanded="false" aria-controls="time-panel" :aria-label="t('展开时间面板', 'Expand time panel')">
-    <span aria-hidden="true">◷</span><span>{{ s.currentTime ? s.currentTime.slice(0,16).replace('T',' ') + ' UTC' : t('观测时间', 'Observation time') }}</span><span aria-hidden="true">⌃</span>
+    <span aria-hidden="true">◷</span><span>{{ c.active ? t('卷帘对比 · UTC', 'Swipe comparison · UTC') : s.currentTime ? s.currentTime.slice(0,16).replace('T',' ') + ' UTC' : t('观测时间', 'Observation time') }}</span><span aria-hidden="true">⌃</span>
   </button>
   <section v-show="s.timePanelOpen" id="time-panel"
     class="timeline glass"
     :aria-label="t('观测时间', 'Observation time')"
   >
     <div class="time-scale" id="time-scale-expanded"></div>
+    <CoordinateReadout class="coordinates-expanded" />
     <button class="time-collapse collapse-button" @click="s.timePanelOpen = false" :aria-expanded="true" aria-controls="time-panel" :aria-label="t('收起时间面板', 'Collapse time panel')">⌄</button>
+    <CompareControls v-if="c.active" />
+    <template v-else>
     <div class="time-heading">
       <div>
         <span class="eyebrow">OBSERVATION TIME</span>
@@ -86,5 +94,6 @@ function step(n: number) {
         }}</span>
       </div></template
     >
+    </template>
   </section>
 </template>

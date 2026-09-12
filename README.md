@@ -135,6 +135,89 @@ Natural Earth：Public Domain，原始授权说明保留在源目录。字体来
 {"badge":"LST","sourceLabel":"MODIS"}
 ```
 
-`badge` 建议使用短文字，例如 `NO₂`、`LST`、`PM₂.₅`、`CO₂`；`sourceLabel` 是卡片顶部短来源名，`source` 保留完整来源。前端不推断卫星或变量身份。旧 JSON 缺少 badge 时显示通用连续/分类图标，缺少 sourceLabel 时显示 source，连 source 都为空则隐藏来源行。
+`badge` 建议使用短文字，例如 `NO₂`、`LST`、`PM₂.₅`、`CO₂`；`sourceLabel` 是卡片顶部短来源名，`source` 保留完整来源。前端不推断卫星或变量身份。徽标仅显示与界面语言无关的变量简称：优先读取 badge，统一化学式下标与标点（NO₂ → NO2、PM₂.₅ → PM25）；四字符以内保留，更长则取前两个字母。旧 JSON 按英文产品名称及 ID 识别 Ae、NO2、PM25、CO2、LST、LCC、Cl；其他变量按英文首词应用同样长度规则，缺失信息时显示 Var。缺少 sourceLabel 时显示 source，连 source 都为空则隐藏来源行。
 
 已有服务器数据无需重新转换 COG：直接在成员 catalog.json 的对应 layers 条目补充这两个字段即可，建议产品 index.json 与产品配置同步补充。若重新运行发布器时修改了产品配置，现有指纹机制会判定配置变化并要求 --overwrite，因此仅修改展示标签时优先更新 JSON。服务器发布新版 dist 时保留服务器自己的 config.json，不要用本地构建内的 config.json 覆盖。
+
+## Linux production workflow
+
+科研数据链路：`results → publish.py → publish/<product>/*.tif + index.json → catalog.json → Nginx`。
+平台代码链路：`已提交的开发代码 → deploy-production.sh → dist → Nginx`。
+恢复链路：`rollback-production.sh → previous known-good version`（源码 commit 与构建产物一同恢复）。
+
+所有命令从项目根目录执行。平台路径由所在目录决定，脚本不绑定服务器路径、成员名或 Git remote；不执行 fetch/pull、sudo、Nginx 修改或重启。生产发布继续使用现有入口，例如：
+
+```bash
+conda run -n py312 python scripts/publish.py \
+  --deployment config/deployment.linux.json --member MEMBER_KEY \
+  --config config/products.json
+```
+
+将 `MEMBER_KEY` 和产品配置文件替换为实际配置。发布器从成员配置读取 resultsRoot/publishRoot，仅规范该 publishRoot、本次产品目录、索引引用的 COG、index.json 和成员 catalog.json：目录 0755，文件 0644。JSON 在 atomic replace 前后都设置 0644，重复运行跳过转换的 COG 也会修复权限。未触及产品和其他成员不递归修改，resultsRoot 不修改。缺失关键产物、符号链接、硬链接或 chmod 失败会报错并非零退出。权限失败不会回滚已生成的科学文件，修正目录所有权后可重复运行。publishRoot 不能等于或包含 resultsRoot。
+
+这些权限不等于完整的 Nginx 访问测试：父目录、ACL、SELinux 及 Nginx 配置仍由服务器管理员管理；脚本对缺少公共遍历权限的祖先目录给出警告，绝不修改它们。历史产品的 0600 文件可按其原配置逐个重跑发布入口（输入及配置不变时复用 COG）；不需要重新转换。
+
+### 首次接管与日常部署
+
+一次性准备：提交本次脚本和 .gitignore 改动，保持工作树干净；确认服务器自己的 `deploy/config.json`、`config/deployment.linux.json` 保持未跟踪；备份现有 dist，并核实它对应的源码 commit。需要本地 Git、Bash、tar、满足 package.json 的 Node/npm，以及 npm 缓存或依赖下载网络。预留至少两份构建和一次 npm ci 的空间。Nginx 必须能读取 `.production/releases/` 并允许 dist 符号链接；祖先目录权限需人工确认。
+
+```bash
+bash scripts/deploy-production.sh --check
+# 首次且仅首次：KNOWN_RUNNING_COMMIT 必须人工确认对应当前可工作的 dist
+bash scripts/deploy-production.sh --adopt-current KNOWN_RUNNING_COMMIT
+# 后续：代码已提交到本地仓库即可，不需要 remote
+bash scripts/deploy-production.sh
+bash scripts/rollback-production.sh --check
+bash scripts/rollback-production.sh
+```
+
+若无法确认现有 dist 对应 commit，不要猜测 HEAD；先人工建立匹配且验证可用的源码/构建基线。`--check` 仅检查基本前置条件，不安装依赖、不构建、不更改生产文件，不能代替实际构建验证。
+
+部署使用 `git archive HEAD` 在 `.production/stage-*` 中隔离执行 `npm ci --include=dev --no-audit --no-fund` 和 `npm run build`，不改当前 node_modules 或运行中的 dist。然后注入服务器 `deploy/config.json`，检查 index/config 和引用的 assets，规范 Web 权限并计算完整性摘要。构建或校验失败，原 dist 保持服务。首次将真实 dist 目录移入保留备份后切换为符号链接，这一步有极短的目录切换间隙；后续用 rename 原子切换 dist 链接。
+
+`.production/state.json` 保存 current（production/last-good）及 previous，记录 commit、构建目录与摘要；只有切换和校验成功才登记新 current，旧 current 成为 previous。首次 `--adopt-current` 仅登记人工确认的已有基线。回滚使用 previous 的已保存构建，不重新安装/构建，验证摘要后先注入**当前**服务器 deploy/config.json，再恢复源码到对应 commit（detached HEAD）并切换 dist。服务器配置不被 Git 覆盖；含这些路径的目标 commit 会被拒绝。回滚成功后 previous 指向回滚前版本，允许再次切回。管理脚本同时保留在 `.production/`，并在本地 `.git/info/exclude` 保留服务器文件忽略规则，避免旧 commit 的 .gitignore 失效。若回滚到尚无新脚本的旧源码，可使用 `bash .production/deploy-production.sh` 或 `bash .production/rollback-production.sh` 继续管理；这不修改任何远程历史。下次开发/更新代码前应明确选择本地分支或目标 commit。
+
+事务 journal 在修改源码或切换 dist 前写入。普通失败自动恢复部署前 dist、源码位置及 state；恢复失败会保留 journal 和备份并报错。进程被杀或机器重启后，先确认没有部署进程，再检查 `.production/journal.json`；仅当锁已失效时手动 `rmdir .production/lock`，然后运行 `bash scripts/deploy-production.sh --recover`。不要在运行中删锁或手工删除 journal。恢复只在有 journal 时执行，不会继续新部署。
+
+release 和首次目录备份不会自动清理；管理员可在确认没有事务后清理未被 current/previous 引用的旧 release。不要删除 current/previous。这里的 known-good 表示人工接管基线或构建/结构校验通过的版本，不含线上业务验收；每次部署后仍应检查页面、图层和 Range 响应。已有浏览器可能需刷新以加载新版本的资源。
+
+未来接入任意 Git 托管平台时，可在脚本之前独立增加 `fetch → 检查目标 commit → 更新本地工作树`，再调用本部署脚本；事务逻辑无需绑定 GitHub/GitLab。
+
+本地回归（仅使用临时目录和临时 Git 仓库；部署测试用模拟 npm，不修改真实 dist）：
+
+```bash
+conda run -n py312 python -m unittest discover -s tests -p 'test_*.py'
+node --test tests/test_production.mjs
+bash -n scripts/deploy-production.sh scripts/rollback-production.sh
+node --check scripts/production.mjs
+```
+
+## 卷帘对比
+
+图层面板底部点击「对比」，在时间面板分别选择左右图层及观测时间。同一图层默认选择两个不同的可用时刻并共用色标；不同图层默认同步时间，仅使用严格交集，无共同时间时可关闭同步独立选择。对比期间普通图层设置暂不可操作，退出恢复原图层与时间。拖动分界线或聚焦手柄后使用左右方向键调整；支持交换左右、收起时间面板，悬停查询同时返回两侧基础分辨率像元值。
+
+对比状态位于 `src/stores/compare.ts`，渲染裁切位于独立 GIS 模块 `src/gis/swipe.ts`；两侧使用独立 WebGL canvas、共用底图，退出时释放栅格及取消请求。前端直接消费现有产品索引，不需要修改发布格式。
+
+## 色标编辑与 Min～P95
+
+连续变量默认使用**当前观测文件的最小有效值～P95**，不再使用产品固定 min/max 作为默认显示范围。统计排除 NoData、NaN 和 Infinity，不裁剪原始科学数值；仍可手动调整范围或恢复自动范围。常量数据会为渲染扩展一个最小范围。同一变量双时间对比共用两侧范围的包络（两侧 min 的最小值、两侧 P95 的最大值），避免颜色失去可比性；这不是合并两时刻像元后的 P95。
+
+现有 `publish.py → publish_product` 会在每个文件条目写入 `statistics: {min, p95}`。保留旧 min/max 字段供兼容客户端读取。重新运行未改变输入及配置的发布命令时，复用 COG，只为缺少统计信息的条目补算并更新索引。未补统计的旧 Float32 COG 在选时后由浏览器分块扫描基础像元，按线性插值精确计算 P95（两遍读取，固定大小直方图；不使用 overview 抽样）。首次会比直接读统计索引慢，生产环境建议先补齐统计；页面仅缓存最近 8 个统计结果，切换/关闭会取消旧计算。其他连续数据类型需先通过现有发布器生成 Float32 COG 或提供 statistics。
+
+分类图例前的色块可点击编辑，包含系统颜色选择器与 `#RRGGBB` 文本框；合法输入即时同步地图，修改仅作用于当前浏览器会话。连续色标旁的 `r` 反转颜色顺序，数值上下限不变。
+
+色标下拉框的「上传 YAML 色标」导入本地文件，支持下面的受限 YAML 格式（或仅使用颜色列表，省略 name/colors）；颜色必须加引号。支持 2–256 个六位十六进制颜色，文件不超过 64 KB，不支持 YAML 标签、锚点及任意嵌套结构。示例位于 `config/palettes/example.yaml`：
+
+```yaml
+name: Aurora
+colors:
+  - "#ffeff3"
+  - "#c3b1ff"
+  - "#6ffdca"
+  - "#f4f226"
+  - "#b10900"
+```
+
+上传色标只保存在当前浏览器的 localStorage，不上传服务器。选择上传色标后，下拉框出现「删除当前上传色标」；删除时使用它的图层回到 Thermal，内置色标保留。反转同步应用于地图和图例。
+
+比例尺下方显示最后一次地图鼠标位置，无需启用科研图层。默认度分秒（E/W、N/S），点击坐标切换为十进制度；时间面板收起/展开保留本次选择。色标下拉文本右对齐，`r` 背景常驻。删除菜单始终可见：上传色标可删除，Viridis/自定义内置色标可隐藏并从菜单恢复，Thermal 为不可删除的默认回退项。

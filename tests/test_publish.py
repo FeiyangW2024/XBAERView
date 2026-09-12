@@ -6,7 +6,7 @@ from osgeo import gdal,osr
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from publish import publish_product,convert,resolution_from_geolocation,validate_cog,timestamp
 class PublishTests(unittest.TestCase):
- def setUp(self):self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+ def setUp(self):self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve()
  def tearDown(self):self.temp.cleanup()
  def nc(self,name='sample_20230101_0000.nc',extra=False,swath=False):
   path=self.root/name
@@ -19,7 +19,7 @@ class PublishTests(unittest.TestCase):
   return path
  def cfg(self):return dict(id='test',product='test',name={'zh':'测试','en':'Test'},type='continuous',unit='K',variable='v',lat='lat',lon='lon',owner='local',source='test')
  def test_regular_fixed_range_idempotent_and_failure(self):
-  p=self.nc();cfg=self.cfg()|{'min':0,'max':1000};out=self.root/'publish';index=publish_product([p],cfg,out);f=out/'test'/index['files'][0]['file'];self.assertEqual(index['max'],1000);self.assertEqual(index['files'][0]['validPixels'],599);validate_cog(f);modified=f.stat().st_mtime_ns;publish_product([p],cfg,out);self.assertEqual(modified,f.stat().st_mtime_ns)
+  p=self.nc();cfg=self.cfg()|{'min':0,'max':1000};out=self.root/'publish';index=publish_product([p],cfg,out);f=out/'test'/index['files'][0]['file'];self.assertEqual(index['max'],1000);self.assertAlmostEqual(index['files'][0]['statistics']['p95'],569.1,places=3);self.assertEqual(index['files'][0]['statistics']['min'],1);self.assertEqual(index['files'][0]['validPixels'],599);validate_cog(f);modified=f.stat().st_mtime_ns;publish_product([p],cfg,out);self.assertEqual(modified,f.stat().st_mtime_ns)
   before=(out/'test/index.json').read_bytes()
   with self.assertRaises(Exception):publish_product([p],cfg|{'variable':'missing'},out,True)
   self.assertEqual(before,(out/'test/index.json').read_bytes())
@@ -35,4 +35,30 @@ class PublishTests(unittest.TestCase):
  def test_bad_coordinates(self):
   with self.assertRaises(ValueError):resolution_from_geolocation(np.full((20,30),np.nan),np.full((20,30),np.nan))
   with self.assertRaises(ValueError):timestamp('no_time.nc')
+ def test_restrictive_umask_permissions_and_scope(self):
+  import os,stat
+  source=self.nc();source.chmod(0o600);out=self.root/'publish'
+  other=self.root/'other';other.mkdir(mode=0o700);sentinel=other/'catalog.json';sentinel.write_text('{}');sentinel.chmod(0o600)
+  mask=os.umask(0o077)
+  try:
+   index=publish_product([source],self.cfg(),out)
+   for f in out.rglob('*'):self.assertEqual(stat.S_IMODE(f.stat().st_mode),0o755 if f.is_dir() else 0o644)
+   cog=out/'test'/index['files'][0]['file'];cog.chmod(0o600)
+   publish_product([source],self.cfg(),out)
+   self.assertEqual(stat.S_IMODE(cog.stat().st_mode),0o644)
+   self.assertEqual(stat.S_IMODE(out.stat().st_mode),0o755)
+   self.assertEqual(stat.S_IMODE(source.stat().st_mode),0o600)
+   self.assertEqual(stat.S_IMODE(sentinel.stat().st_mode),0o600)
+  finally:os.umask(mask)
+ def test_permission_path_guards(self):
+  from publish_permissions import checked_path,normalize_artifacts
+  from unittest.mock import patch
+  root=self.root/'publish';root.mkdir();outside=self.root/'results';outside.mkdir()
+  (root/'escape').symlink_to(outside,target_is_directory=True)
+  with self.assertRaises(ValueError):checked_path(root,root/'escape'/'x')
+  with self.assertRaises(ValueError):checked_path(root,root/'..'/'results'/'x')
+  with self.assertRaises(RuntimeError):normalize_artifacts(root,[root/'missing'])
+  f=root/'index.json';f.write_text('{}')
+  with patch('publish_permissions.os.chmod',side_effect=PermissionError('denied')):
+   with self.assertRaisesRegex(RuntimeError,'Cannot set Web permissions'):normalize_artifacts(root,[f])
 if __name__=='__main__':unittest.main()

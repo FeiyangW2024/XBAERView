@@ -13,7 +13,7 @@ def load_deployment(path):
         if not key or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in key):raise ValueError('Invalid logical member key')
         for field in ['resultsRoot','publishRoot']:member[field]=resolved(member[field])
         if not member['publishUrl'].startswith('/') or not member['publishUrl'].endswith('/'):raise ValueError('publishUrl must be an absolute same-origin directory URL ending in /')
-        if Path(member['resultsRoot'])==Path(member['publishRoot']):raise ValueError('resultsRoot and publishRoot must differ')
+        if Path(member['resultsRoot']).is_relative_to(Path(member['publishRoot'])):raise ValueError('publishRoot must not contain or equal resultsRoot')
     for field in ['sourceRoot','publishRoot']:cfg['basemap'][field]=resolved(cfg['basemap'][field])
     if not cfg['basemap']['url'].startswith('/') or not cfg['basemap']['url'].endswith('/'):raise ValueError('basemap URL must be an absolute directory URL')
     return cfg

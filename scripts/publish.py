@@ -7,6 +7,7 @@ import numpy as np
 from netCDF4 import Dataset
 from osgeo import gdal, osr
 from deployment_config import load_deployment, member_paths
+from publish_permissions import checked_path, normalize_artifacts
 
 gdal.UseExceptions()
 PIPELINE_VERSION='1.0.2'
@@ -17,7 +18,9 @@ def atomic_json(path, data):
     fd,tmp=tempfile.mkstemp(dir=path.parent,suffix='.tmp')
     try:
         with os.fdopen(fd,'w') as f: json.dump(data,f,ensure_ascii=False,indent=2,allow_nan=False)
+        os.chmod(tmp,0o644)
         os.replace(tmp,path)
+        os.chmod(path,0o644)
     finally:
         if os.path.exists(tmp): os.unlink(tmp)
 
@@ -150,9 +153,12 @@ def convert(path,cfg,tmp):
 def publish_product(paths,cfg,output,overwrite=False):
     product=cfg['product']
     if not re.fullmatch(r'[a-zA-Z0-9_-]+',product):raise ValueError('Invalid product directory')
-    out=Path(output)/product;out.mkdir(parents=True,exist_ok=True)
+    out=checked_path(output,Path(output)/product)
+    checked_path(output,out/'index.json');checked_path(output,Path(output)/'catalog.json')
+    out.mkdir(parents=True,exist_ok=True)
     indexpath=out/'index.json';old=json.loads(indexpath.read_text()) if indexpath.exists() else {}
     entries={e['datetime']:e for e in old.get('files',[])}
+    for e in entries.values():checked_path(output,out/e['file'])
     for path in sorted(paths):
         stamp=timestamp(path,cfg.get('datetime'))
         fingerprint=hashlib.sha256(Path(path).read_bytes()+json.dumps(cfg,sort_keys=True).encode()+PIPELINE_VERSION.encode()).hexdigest()
@@ -164,7 +170,8 @@ def publish_product(paths,cfg,output,overwrite=False):
             filename=f"{product}_{stamp.replace('-','').replace(':','')}_{fingerprint[:12]}.tif"
             # stage inside target filesystem; expose only a fully written final COG.
             import shutil
-            stage=out/(filename+'.tmp');shutil.copyfile(cog,stage);os.replace(stage,out/filename)
+            stage=checked_path(output,out/(filename+'.tmp'));checked_path(output,out/filename)
+            shutil.copyfile(cog,stage);os.chmod(stage,0o644);os.replace(stage,out/filename);os.chmod(out/filename,0o644)
         entries[stamp]={'datetime':stamp,'file':filename,'fingerprint':fingerprint,**info}
         print('COG',filename,info['width'],info['height'])
     index={k:v for k,v in cfg.items() if k in ['id','name','type','unit','classes','source','sourceLabel','badge','owner','min','max']}
@@ -177,10 +184,20 @@ def publish_product(paths,cfg,output,overwrite=False):
                 d=gdal.Open(str(out/e['file']));a=d.ReadAsArray();values.append(a[np.isfinite(a)&(a!=e['nodata'])]);d=None
             low,high=np.percentile(np.concatenate(values),cfg.get('percentiles',[2,98]));index.update(min=float(low),max=float(high if high>low else low+1))
         if not index['max']>index['min']:raise ValueError('max must exceed min')
+    if cfg['type']=='continuous':
+        for entry in index['files']:
+            if 'statistics' not in entry:
+                dataset=gdal.Open(str(out/entry['file']))
+                if dataset is None:raise ValueError('Cannot read published COG for statistics: '+entry['file'])
+                array=dataset.ReadAsArray();valid=array[np.isfinite(array)&(array!=entry['nodata'])];dataset=None
+                if not valid.size:raise ValueError('No valid pixels for statistics: '+entry['file'])
+                entry['statistics']={'min':float(valid.min()),'p95':float(np.percentile(valid,95))}
+        index['processing']['displayRange']='per-observation-min-p95'
     atomic_json(indexpath,index)
     catalogpath=Path(output)/'catalog.json';catalog=json.loads(catalogpath.read_text()) if catalogpath.exists() else {'schemaVersion':1,'layers':[]}
     entry={k:index[k] for k in ['id','name','type','unit','source','sourceLabel','badge','owner'] if k in index};entry['index']=product+'/index.json'
     catalog['layers']=[x for x in catalog['layers'] if x['id']!=entry['id']]+[entry];atomic_json(catalogpath,catalog)
+    normalize_artifacts(output,[indexpath,catalogpath,*[out/e['file'] for e in index['files']]])
     return index
 
 def main():

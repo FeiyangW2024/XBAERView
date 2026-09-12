@@ -33,6 +33,7 @@ export class MapController {
       pixel: number[],
     ) => void,
     onError: (e: string) => void,
+    onCoordinate: (coordinate: number[]) => void = () => {},
   ) {
     this.map = new Map({
       target,
@@ -64,6 +65,10 @@ export class MapController {
     this.map.on("movestart", this.clearHover);
     this.map.on("pointermove", (e) => {
       this.clearHover();
+      if (!(e.originalEvent.target as HTMLElement)?.closest(".ol-control")) {
+        const [lon, lat] = toLonLat(e.coordinate);
+        if(Number.isFinite(lon) && Number.isFinite(lat)) onCoordinate([((lon! + 180) % 360 + 360) % 360 - 180, Math.max(-90,Math.min(90,lat!))]);
+      }
       if (e.dragging || this.map.getView().getInteracting() || !this.rasters.hasLayers() ||
           (e.originalEvent.target as HTMLElement)?.closest(".ol-control")) return;
       const version = this.queryVersion;
@@ -116,6 +121,19 @@ export class MapController {
         registerRasterProjection(file),
       );
     }
+    this.rasters.retain(active);
+  }
+  swipe(fraction: number) { this.rasters.fraction = fraction; this.map.render(); }
+  compare(layers: LayerInfo[], ids: string[], indices: (ProductIndex | null)[], settings: LayerSettings[], times: string[]) {
+    this.clearHover();
+    const active: string[] = [];
+    ids.forEach((id, side) => {
+      const index = indices[side], layer = layers.find(l => l.id === id);
+      const file = index && exactFile(index, times[side] ?? '');
+      if (!index || !layer || !file || !settings[side]) return;
+      const key = 'compare:' + side; active.push(key);
+      this.rasters.set(key, rasterUrl(layer,file.file), index, settings[side]!, 20 + side, registerRasterProjection(file));
+    });
     this.rasters.retain(active);
   }
   appearance(theme: "light" | "dark", locale: "zh" | "en") {
