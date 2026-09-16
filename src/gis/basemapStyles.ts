@@ -1,7 +1,8 @@
 import { Style, Fill, Stroke, Text, Circle as CircleStyle } from "ol/style";
+import { basemapStack } from "./layerStack";
 import type { FeatureLike } from "ol/Feature";
 export type BasemapKind =
-  "countries" | "coastline" | "provinces" | "rivers" | "lakes" | "cities";
+  "ocean" | "land" | "lakesFill" | "countries" | "coastline" | "provinces" | "rivers" | "lakes" | "cities";
 export const themes = {
   light: {
     land: "#e9ece7",
@@ -30,8 +31,8 @@ export function visibleAt(
   p: Record<string, unknown>,
   zoom: number,
 ) {
-  if (kind === "countries" || kind === "coastline") return true;
-  const base = kind === "provinces" ? 4 : kind === "rivers" ? 3 : 0;
+  if (["ocean", "land", "countries", "coastline"].includes(kind)) return true;
+  const base = basemapStack[kind].minZoom;
   const z =
     p.min_zoom != null
       ? Number(p.min_zoom)
@@ -61,13 +62,13 @@ export function makeBasemapStyle(
     if (cache.has(key)) return cache.get(key)!;
     const style = new Style({
       fill:
-        kind === "countries"
+        kind === "land"
           ? new Fill({ color: c.land })
-          : kind === "lakes"
+          : (kind === "ocean" || kind === "lakesFill")
             ? new Fill({ color: c.water })
             : undefined,
       stroke:
-        kind === "cities"
+        ["cities", "ocean", "land", "lakesFill"].includes(kind)
           ? undefined
           : new Stroke({
               color:

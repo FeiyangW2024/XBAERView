@@ -1,3 +1,4 @@
+import { scienceZIndex } from "./layerStack";
 import { registerRasterProjection } from "./projection";
 import Map from "ol/Map";
 import View from "ol/View";
@@ -117,7 +118,7 @@ export class MapController {
         ),
         index,
         settings[id]!,
-        20 + enabled.length - i,
+        scienceZIndex(i, enabled.length),
         registerRasterProjection(file),
       );
     }
@@ -132,7 +133,7 @@ export class MapController {
       const file = index && exactFile(index, times[side] ?? '');
       if (!index || !layer || !file || !settings[side]) return;
       const key = 'compare:' + side; active.push(key);
-      this.rasters.set(key, rasterUrl(layer,file.file), index, settings[side]!, 20 + side, registerRasterProjection(file));
+      this.rasters.set(key, rasterUrl(layer,file.file), index, settings[side]!, scienceZIndex(side, 2), registerRasterProjection(file));
     });
     this.rasters.retain(active);
   }

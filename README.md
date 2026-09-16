@@ -294,3 +294,18 @@ REMOTE
 ```
 
 `.production/rollback-production.sh` 是已有管理脚本保留副本，适用于源码已回退到尚无 scripts 工具的旧版本。回滚不修改远程历史，保留当前服务器 deploy/config.json。新入口的本地测试使用临时 Git 仓库、模拟 Conda/npm/curl，不连接真实服务器：`node --test tests/test_push_production.mjs`。
+
+## Natural Earth 渲染层级
+
+`src/gis/layerStack.ts` 集中管理 zIndex 和最低显示 zoom；所有矢量层拥有独立 OpenLayers VectorLayer，COG 和卷帘对比使用相同的科研栅格区间：
+
+| 渲染层 | zIndex | 显示规则 |
+| --- | --- | --- |
+| Ocean、Land、湖泊底色 | 0、10、11 | 海陆始终显示，湖泊按 min_zoom/rank |
+| 可选 RGB 影像 | 20 | 既有配置接口 |
+| 科研 COG | 100～200（不含端点） | 按已启用图层顺序，第一项在上 |
+| 湖泊轮廓、河流、海岸线 | 300、310、320 | 河流 zoom ≥ 3；湖泊/河流同时按要素 min_zoom/rank；海岸线始终显示 |
+| 国界、省界 | 330、340 | 国界始终显示；省界 zoom ≥ 4 且满足要素规则 |
+| 城市点与标签 | 400 | 按 min_zoom/rank，启用标签避让 |
+
+Ocean 使用世界范围纯色面并支持 wrapX；Land 与国界共享 countries.geojson 源，但分别仅绘制填色与边线。湖泊填色与轮廓也共享源，轮廓位于 COG 上方、填色位于下方，不遮挡湖泊上的科学数据。主题/语言切换只重设样式，不重新下载。缩放在样式函数中精确判断，包含阈值本身（zoom 3、4），避免 OpenLayers minZoom 排他边界导致闪断。继续使用原来的六份公共运行时 GeoJSON，不需重新处理 Natural Earth，也不打包进前端。
